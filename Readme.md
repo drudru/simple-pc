@@ -22,7 +22,6 @@ This project is written in TypeScript and builds with gulp. The result is just o
 
 
     $ ./node_modules/.bin/tsd query node --action install
-    $ ./node_modules/.bin/tsd query mocha --action install
     $ ./node_modules/.bin/gulp typescript
 
 
