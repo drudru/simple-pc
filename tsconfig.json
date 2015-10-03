@@ -4,7 +4,7 @@
     "module": "commonjs",
     "noEmitOnError": true,
     "removeComments": false,
-    "outFile": "simple-pc.js"
+    "outDir": "."
   },
   "exclude": [ "node_modules" ]
 }

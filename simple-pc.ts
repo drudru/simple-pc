@@ -89,16 +89,21 @@ class SimplePC_UnixDomain_Server extends SimplePC_Base
 {
   sockets:net.Socket[];
   msg_cb:(msg:any)=>void;
-  
+
   constructor(path:string)
   {
     super(path);
     this.sockets = [];
-    fs.unlinkSync(path);
+    try {
+      fs.unlinkSync(path);
+    } catch (e) {
+      if (e.code !== 'ENOENT')
+        throw e;
+    }
     var srv = net.createServer((sock) => {
     });
   }
-  
+
   on_msg(msg_cb:(msg:any)=>void)
   {
     this.msg_cb = msg_cb;
