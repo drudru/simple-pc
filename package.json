@@ -30,5 +30,8 @@
     "tsd": "^0.6",
     "gulp": "^3.9.0",
     "gulp-typescript": "^2.8.0"
+  },
+  "dependencies": {
+    "fibers": "^1.0.7"
   }
 }
