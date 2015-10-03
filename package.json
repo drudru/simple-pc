@@ -1,0 +1,38 @@
+{
+  "name": "simple-pc",
+  "version": "0.1.0",
+  "description": "Simple Process Communication",
+  "main": "simple-pc.js",
+  "scripts": {
+    "build": "gulp",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/drudru/simple-pc.git"
+  },
+  "keywords": [
+    "ipc",
+    "rpc",
+    "sockets",
+    "tcp",
+    "unix",
+    "domain"
+  ],
+  "author": "drudru <drudru@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/drudru/simple-pc/issues"
+  },
+  "homepage": "https://github.com/drudru/simple-pc",
+  "devDependencies": {
+    "mocha": "^2.3.3",
+    "should": "^7.1.0",
+    "typescript": "^1.6",
+    "tsd": "^0.6",
+    "gulp": "^3.9.0",
+    "gulp-mocha": "^2.1.3",
+    "gulp-util": "^3.0.6",
+    "gulp-typescript": "^2.8.0"
+  }
+}

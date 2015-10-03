@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "commonjs",
+    "noEmitOnError": true,
+    "removeComments": false,
+    "outFile": "simple-pc.js"
+  },
+  "exclude": [ "node_modules" ]
+}
