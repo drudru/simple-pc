@@ -150,11 +150,13 @@ export class SimplePC_UnixDomain_Server extends SimplePC_Base
     fibers.yield();
   }
 
+  /*
   private shutdown():void
   {
     this.listen_sock.close();
     this.listen_sock = null;  
   }
+  */
   
   receive(timeout_ms:number):any
   {
@@ -163,7 +165,6 @@ export class SimplePC_UnixDomain_Server extends SimplePC_Base
 
     if (this.in_box.length != 0) {
       let x = this.in_box.shift();  //interesting - how would we prove
-      this.shutdown();
       return x;                     // to a prover that this cannot
                                     // return 'timeout'
     }
@@ -184,47 +185,8 @@ export class SimplePC_UnixDomain_Server extends SimplePC_Base
       throw new Error('timeout');
     let result = this.in_box.shift();
     
-    this.shutdown();
-
     return result;
   }
-  
-  receive_multi(timeout_ms:number, num_msgs:number, cb:(any) => void):void
-  {
-    if (this.fiber !== fibers.current)
-      throw new Error('Invalid fiber');
-
-    while (num_msgs) {
-      if (this.in_box.length != 0) {
-        console.log('already here');
-        num_msgs--;
-        let x = this.in_box.shift();  //interesting - how would we prove
-        cb(x);                        // to a prover that this cannot
-                                      // return 'timeout'
-        continue;
-      }
-
-      let timer = setTimeout(() => {
-        this.in_box.unshift('timeout');
-        this.fiber.run();
-      }, timeout_ms);
-      
-      fibers.yield();
-      
-      clearTimeout(timer);
-      timer = null;
-      
-      if (this.in_box.length == 0)
-        throw new Error('bad result');
-      if (this.in_box[0] == 'timeout')
-        throw new Error('timeout');
-      let result = this.in_box.shift();
-      num_msgs--;
-      cb(result);
-    }
-    
-    this.shutdown();
-  }  
 }
 
 

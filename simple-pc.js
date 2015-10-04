@@ -109,17 +109,19 @@ var SimplePC_UnixDomain_Server = (function (_super) {
         }, millis);
         fibers.yield();
     };
-    SimplePC_UnixDomain_Server.prototype.shutdown = function () {
-        this.listen_sock.close();
-        this.listen_sock = null;
-    };
+    /*
+    private shutdown():void
+    {
+      this.listen_sock.close();
+      this.listen_sock = null;
+    }
+    */
     SimplePC_UnixDomain_Server.prototype.receive = function (timeout_ms) {
         var _this = this;
         if (this.fiber !== fibers.current)
             throw new Error('Invalid fiber');
         if (this.in_box.length != 0) {
             var x = this.in_box.shift(); //interesting - how would we prove
-            this.shutdown();
             return x; // to a prover that this cannot
         }
         var timer = setTimeout(function () {
@@ -134,38 +136,7 @@ var SimplePC_UnixDomain_Server = (function (_super) {
         if (this.in_box[0] == 'timeout')
             throw new Error('timeout');
         var result = this.in_box.shift();
-        this.shutdown();
         return result;
-    };
-    SimplePC_UnixDomain_Server.prototype.receive_multi = function (timeout_ms, num_msgs, cb) {
-        var _this = this;
-        if (this.fiber !== fibers.current)
-            throw new Error('Invalid fiber');
-        while (num_msgs) {
-            if (this.in_box.length != 0) {
-                console.log('already here');
-                num_msgs--;
-                var x = this.in_box.shift(); //interesting - how would we prove
-                cb(x); // to a prover that this cannot
-                // return 'timeout'
-                continue;
-            }
-            var timer = setTimeout(function () {
-                _this.in_box.unshift('timeout');
-                _this.fiber.run();
-            }, timeout_ms);
-            fibers.yield();
-            clearTimeout(timer);
-            timer = null;
-            if (this.in_box.length == 0)
-                throw new Error('bad result');
-            if (this.in_box[0] == 'timeout')
-                throw new Error('timeout');
-            var result = this.in_box.shift();
-            num_msgs--;
-            cb(result);
-        }
-        this.shutdown();
     };
     return SimplePC_UnixDomain_Server;
 })(SimplePC_Base);

@@ -25,15 +25,18 @@ if (process.argv[2] == '1') {
         console.log('requests');    
         console.log(process["_getActiveRequests"]());
         */
+        process.exit(0);
     }).run();
 } else if (process.argv[2] == '2') {
     Fiber(() => {
         let srv = spc.create_unix_server('test.sock');
         
-        console.log('waiting for msg');
-        srv.receive_multi(15 * 1000, 2, (msg) => {
-            console.log('got msg:', msg);
-        });
+        console.log('waiting for msgs');
+        var num_msgs = 2;
+        while (num_msgs--) {
+          let msg = srv.receive(15 * 1000);
+          console.log('got msg:', msg);
+        }
     
         /*
         console.log('handles');    
@@ -41,6 +44,7 @@ if (process.argv[2] == '1') {
         console.log('requests');    
         console.log(process["_getActiveRequests"]());
         */
+        process.exit(0);
     }).run();
 } else if (process.argv[2] == '3') {
     Fiber(() => {
@@ -48,6 +52,8 @@ if (process.argv[2] == '1') {
 
         console.log('sleepily waiting for msg');        
         
+        // If client sends message during sleep, it should get queued
+        // up so that receive after sleep is effectively instant
         srv.sleep(5000);
 
         console.log('waiting for msg');
@@ -59,17 +65,23 @@ if (process.argv[2] == '1') {
         console.log('requests');    
         console.log(process["_getActiveRequests"]());
         */
+        process.exit(0);
     }).run();
 } else if (process.argv[2] == '4') {
     Fiber(() => {
         let srv = spc.create_unix_server('test.sock');
 
+        // If multiple clients send messages during sleep,
+        // they should get queued up so that receive after
+        // sleep is effectively instant
         console.log('sleepily waiting for 2 msgs');        
         srv.sleep(5000);
 
-        srv.receive_multi(15 * 1000, 2, (msg) => {
-            console.log('got msg:', msg);
-        });
+        var num_msgs = 2;
+        while (num_msgs--) {
+          let msg = srv.receive(15 * 1000);
+          console.log('got msg:', msg);
+        }
     
         /*
         console.log('handles');    
@@ -77,5 +89,6 @@ if (process.argv[2] == '1') {
         console.log('requests');    
         console.log(process["_getActiveRequests"]());
         */
+        process.exit(0);
     }).run();
 }
