@@ -44,44 +44,6 @@ class SimplePC_Base
       return packet.join(' ');
   }
   
-  private send_packet(queue_name:string, packet:string, callback:(err:string, result:any) => void):any
-  {
-    // Open unix domain socket
-    var que_path = path.join(this.path, 'queue', queue_name, 'queue.sock');
-    var client = net.createConnection(que_path);
-    console.log(que_path);
-    client.on("connect", function() {
-      console.log(packet);
-      client.write(packet);
-    });
-    
-    var body = [];
-    client.on('data', function (d) { body.push(d) });
-    client.on('close', function () { });
-    client.on('error', function (e) { console.log('got error', e) });
-    client.on('end', function () {
-      var resp = body.join('');
-      console.log("Got response: " + resp);
-  
-      var parts = [ resp.slice(0,4), resp.slice(4,12), resp.slice(13) ];
-    
-      if (parts[0] != 'rq2 ')
-        return callback('invalid protocol', null);
-  
-      var len = parseInt(parts[1], 10);
-      if (len != Buffer.byteLength(parts[2], 'utf8'))
-        return callback('invalid response - len mismatch', null);
-  
-      var msg = JSON.parse(parts[2]);
-  
-      if (msg[0] == "ok")
-        callback(null, msg[1]);
-      else
-        callback("server", msg);
-    });
-  
-  }
-  
 }
 
 class SimplePC_Packet
@@ -135,12 +97,14 @@ export class SimplePC_UnixDomain_Server extends SimplePC_Base
   in_box:any[];
   fiber:fibers.Fiber;
   out_box:any;
+  listen_sock:net.Server;
+  private in_sleep:boolean;
 
   constructor(path:string)
   {
     super(path);
     this.in_box = [];
-    
+    this.fiber = fibers.current;
     this.out_box = this.create_rq_packet('ok', []);
     
     try {
@@ -149,42 +113,61 @@ export class SimplePC_UnixDomain_Server extends SimplePC_Base
       if (e.code !== 'ENOENT')
         throw e;
     }
-    var srv = net.createServer((sock) => {
+    this.listen_sock = net.createServer((sock:net.Socket) => {
       // We get a connection
       let pkt = new SimplePC_Packet();
       sock.on('data', (d:Buffer) => {
         pkt.add_data(d);
         
         if (pkt.is_ready()) {
-          console.log('writing reply: ', this.out_box);
+          //console.log('writing reply: ', this.out_box);
           sock.write(this.out_box);  // send standard 'ok' reply
+          sock.end();
   
-          console.log('telling server receive to run');
           this.in_box.push(pkt.msg);
-          this.fiber.run();
+          
+          if (!this.in_sleep)
+            this.fiber.run();
         }
       });
-      sock.on('close', function () { });
+      sock.on('close', () => { });
+      sock.on('end', () => { });
       sock.on('error', (e) => {
         console.log('got error', e);
         throw new Error('socket error: ' + e); 
       });
-      sock.on('end', () => {
-        console.log("Got end");
-      });
     });
-    srv.listen(path);
+    this.listen_sock.listen(path);
+  }
+  
+  sleep(millis:number):void
+  {
+    this.in_sleep = true;
+    setTimeout(() => {
+      this.in_sleep = false;
+      this.fiber.run();
+    }, millis);
+    fibers.yield();
   }
 
+  private shutdown():void
+  {
+    this.listen_sock.close();
+    this.listen_sock = null;  
+  }
+  
   receive(timeout_ms:number):any
   {
+    if (this.fiber !== fibers.current)
+      throw new Error('Invalid fiber');
+
     if (this.in_box.length != 0) {
       let x = this.in_box.shift();  //interesting - how would we prove
+      this.shutdown();
       return x;                     // to a prover that this cannot
                                     // return 'timeout'
     }
 
-    this.fiber = fibers.current;
     let timer = setTimeout(() => {
       this.in_box.unshift('timeout');
       this.fiber.run();
@@ -200,10 +183,51 @@ export class SimplePC_UnixDomain_Server extends SimplePC_Base
     if (this.in_box[0] == 'timeout')
       throw new Error('timeout');
     let result = this.in_box.shift();
-    this.fiber = null;  // Free up for GC
+    
+    this.shutdown();
+
     return result;
   }
+  
+  receive_multi(timeout_ms:number, num_msgs:number, cb:(any) => void):void
+  {
+    if (this.fiber !== fibers.current)
+      throw new Error('Invalid fiber');
+
+    while (num_msgs) {
+      if (this.in_box.length != 0) {
+        console.log('already here');
+        num_msgs--;
+        let x = this.in_box.shift();  //interesting - how would we prove
+        cb(x);                        // to a prover that this cannot
+                                      // return 'timeout'
+        continue;
+      }
+
+      let timer = setTimeout(() => {
+        this.in_box.unshift('timeout');
+        this.fiber.run();
+      }, timeout_ms);
+      
+      fibers.yield();
+      
+      clearTimeout(timer);
+      timer = null;
+      
+      if (this.in_box.length == 0)
+        throw new Error('bad result');
+      if (this.in_box[0] == 'timeout')
+        throw new Error('timeout');
+      let result = this.in_box.shift();
+      num_msgs--;
+      cb(result);
+    }
+    
+    this.shutdown();
+  }  
 }
+
+
 
 export class SimplePC_UnixDomain_Client  extends SimplePC_Base
 {
@@ -223,7 +247,6 @@ export class SimplePC_UnixDomain_Client  extends SimplePC_Base
     
     // sigh... connect may take a while...
     sock.on("connect", () => {
-      console.log('connected');
       this.connected = true;
       if (this.out_box) {
         sock.write(this.out_box);
@@ -241,20 +264,17 @@ export class SimplePC_UnixDomain_Client  extends SimplePC_Base
       this.in_box.push(pkt.msg);
       this.fiber.run();
     });
-    sock.on('close', function () { console.log('client close') });
+    sock.on('close', () => { });
+    sock.on('end',  () => { });
     sock.on('error', (e) => {
       console.log('got error', e);
       throw new Error('socket error: ' + e); 
-    });
-    sock.on('end', () => {
-      console.log("Got end");
     });
   }
 
   send(timeout_ms:number, cmd:string, payload:any):any
   {
     let pkt = this.create_rq_packet(cmd, payload);
-    console.log('connected: ', this.connected);
     if (this.connected)
       this.sock.write(pkt);
     else
@@ -262,14 +282,12 @@ export class SimplePC_UnixDomain_Client  extends SimplePC_Base
 
     this.fiber = fibers.current;
     let timer = setTimeout(() => {
-      console.log('setTimeout...', new Date);
       this.in_box.unshift('timeout');
       this.fiber.run();
     }, timeout_ms);
-    
-    console.log('yielding...', new Date);
+
     fibers.yield();
-    
+
     clearTimeout(timer);
     timer = null;
     

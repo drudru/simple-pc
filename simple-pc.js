@@ -5,7 +5,6 @@ var __extends = (this && this.__extends) || function (d, b) {
 };
 var net = require('net');
 var fs = require('fs');
-var path = require('path');
 var fibers = require('fibers');
 function left_pad(txt, pad, total) {
     if (txt.length >= total)
@@ -29,35 +28,6 @@ var SimplePC_Base = (function () {
         packet.push(left_pad(buff_len.toString(10), "0", 8));
         packet.push(json);
         return packet.join(' ');
-    };
-    SimplePC_Base.prototype.send_packet = function (queue_name, packet, callback) {
-        // Open unix domain socket
-        var que_path = path.join(this.path, 'queue', queue_name, 'queue.sock');
-        var client = net.createConnection(que_path);
-        console.log(que_path);
-        client.on("connect", function () {
-            console.log(packet);
-            client.write(packet);
-        });
-        var body = [];
-        client.on('data', function (d) { body.push(d); });
-        client.on('close', function () { });
-        client.on('error', function (e) { console.log('got error', e); });
-        client.on('end', function () {
-            var resp = body.join('');
-            console.log("Got response: " + resp);
-            var parts = [resp.slice(0, 4), resp.slice(4, 12), resp.slice(13)];
-            if (parts[0] != 'rq2 ')
-                return callback('invalid protocol', null);
-            var len = parseInt(parts[1], 10);
-            if (len != Buffer.byteLength(parts[2], 'utf8'))
-                return callback('invalid response - len mismatch', null);
-            var msg = JSON.parse(parts[2]);
-            if (msg[0] == "ok")
-                callback(null, msg[1]);
-            else
-                callback("server", msg);
-        });
     };
     return SimplePC_Base;
 })();
@@ -98,6 +68,7 @@ var SimplePC_UnixDomain_Server = (function (_super) {
         var _this = this;
         _super.call(this, path);
         this.in_box = [];
+        this.fiber = fibers.current;
         this.out_box = this.create_rq_packet('ok', []);
         try {
             fs.unlinkSync(path);
@@ -106,37 +77,51 @@ var SimplePC_UnixDomain_Server = (function (_super) {
             if (e.code !== 'ENOENT')
                 throw e;
         }
-        var srv = net.createServer(function (sock) {
+        this.listen_sock = net.createServer(function (sock) {
             // We get a connection
             var pkt = new SimplePC_Packet();
             sock.on('data', function (d) {
                 pkt.add_data(d);
                 if (pkt.is_ready()) {
-                    console.log('writing reply: ', _this.out_box);
+                    //console.log('writing reply: ', this.out_box);
                     sock.write(_this.out_box); // send standard 'ok' reply
-                    console.log('telling server receive to run');
+                    sock.end();
                     _this.in_box.push(pkt.msg);
-                    _this.fiber.run();
+                    if (!_this.in_sleep)
+                        _this.fiber.run();
                 }
             });
             sock.on('close', function () { });
+            sock.on('end', function () { });
             sock.on('error', function (e) {
                 console.log('got error', e);
                 throw new Error('socket error: ' + e);
             });
-            sock.on('end', function () {
-                console.log("Got end");
-            });
         });
-        srv.listen(path);
+        this.listen_sock.listen(path);
     }
+    SimplePC_UnixDomain_Server.prototype.sleep = function (millis) {
+        var _this = this;
+        this.in_sleep = true;
+        setTimeout(function () {
+            _this.in_sleep = false;
+            _this.fiber.run();
+        }, millis);
+        fibers.yield();
+    };
+    SimplePC_UnixDomain_Server.prototype.shutdown = function () {
+        this.listen_sock.close();
+        this.listen_sock = null;
+    };
     SimplePC_UnixDomain_Server.prototype.receive = function (timeout_ms) {
         var _this = this;
+        if (this.fiber !== fibers.current)
+            throw new Error('Invalid fiber');
         if (this.in_box.length != 0) {
             var x = this.in_box.shift(); //interesting - how would we prove
+            this.shutdown();
             return x; // to a prover that this cannot
         }
-        this.fiber = fibers.current;
         var timer = setTimeout(function () {
             _this.in_box.unshift('timeout');
             _this.fiber.run();
@@ -149,8 +134,38 @@ var SimplePC_UnixDomain_Server = (function (_super) {
         if (this.in_box[0] == 'timeout')
             throw new Error('timeout');
         var result = this.in_box.shift();
-        this.fiber = null; // Free up for GC
+        this.shutdown();
         return result;
+    };
+    SimplePC_UnixDomain_Server.prototype.receive_multi = function (timeout_ms, num_msgs, cb) {
+        var _this = this;
+        if (this.fiber !== fibers.current)
+            throw new Error('Invalid fiber');
+        while (num_msgs) {
+            if (this.in_box.length != 0) {
+                console.log('already here');
+                num_msgs--;
+                var x = this.in_box.shift(); //interesting - how would we prove
+                cb(x); // to a prover that this cannot
+                // return 'timeout'
+                continue;
+            }
+            var timer = setTimeout(function () {
+                _this.in_box.unshift('timeout');
+                _this.fiber.run();
+            }, timeout_ms);
+            fibers.yield();
+            clearTimeout(timer);
+            timer = null;
+            if (this.in_box.length == 0)
+                throw new Error('bad result');
+            if (this.in_box[0] == 'timeout')
+                throw new Error('timeout');
+            var result = this.in_box.shift();
+            num_msgs--;
+            cb(result);
+        }
+        this.shutdown();
     };
     return SimplePC_UnixDomain_Server;
 })(SimplePC_Base);
@@ -166,7 +181,6 @@ var SimplePC_UnixDomain_Client = (function (_super) {
         this.in_box = [];
         // sigh... connect may take a while...
         sock.on("connect", function () {
-            console.log('connected');
             _this.connected = true;
             if (_this.out_box) {
                 sock.write(_this.out_box);
@@ -182,30 +196,25 @@ var SimplePC_UnixDomain_Client = (function (_super) {
             _this.in_box.push(pkt.msg);
             _this.fiber.run();
         });
-        sock.on('close', function () { console.log('client close'); });
+        sock.on('close', function () { });
+        sock.on('end', function () { });
         sock.on('error', function (e) {
             console.log('got error', e);
             throw new Error('socket error: ' + e);
-        });
-        sock.on('end', function () {
-            console.log("Got end");
         });
     }
     SimplePC_UnixDomain_Client.prototype.send = function (timeout_ms, cmd, payload) {
         var _this = this;
         var pkt = this.create_rq_packet(cmd, payload);
-        console.log('connected: ', this.connected);
         if (this.connected)
             this.sock.write(pkt);
         else
             this.out_box = pkt;
         this.fiber = fibers.current;
         var timer = setTimeout(function () {
-            console.log('setTimeout...', new Date);
             _this.in_box.unshift('timeout');
             _this.fiber.run();
         }, timeout_ms);
-        console.log('yielding...', new Date);
         fibers.yield();
         clearTimeout(timer);
         timer = null;
