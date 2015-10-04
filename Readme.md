@@ -2,9 +2,11 @@
 
 __simple-pc__ is a simple library for communicating between processes on a local or remote machine.
 At this point, it only supports unix domain sockets. In the future, it will support other transports.
-It is designed to be used in a node environment.
+It is designed to be used in a node environment with fibers.
 
 ## Node Example
+
+** LOOK AT THE TESTS IN TEST **
 
 ```JavaScript
     var spc = require('simple-pc');
@@ -12,16 +14,13 @@ It is designed to be used in a node environment.
     // PROVIDE EXAMPLE
 ```
 
-## Installation
-
-    $ npm install simple-pc
-
 ## Building
 
 This project is written in TypeScript and builds with gulp. The result is just one file.
 
 
     $ ./node_modules/.bin/tsd query node --action install
+    $ ./node_modules/.bin/tsd query fibers --action install
     $ ./node_modules/.bin/gulp typescript
 
 
