@@ -179,6 +179,7 @@ var SimplePC_UnixDomain_Client = (function (_super) {
         this.sock = sock;
         this.connected = false;
         this.in_box = [];
+        this.fiber = fibers.current;
         // sigh... connect may take a while...
         sock.on("connect", function () {
             _this.connected = true;
@@ -232,7 +233,6 @@ var SimplePC_UnixDomain_Client = (function (_super) {
         if (this.in_box[0] == 'timeout')
             throw new Error('timeout');
         var result = this.in_box.shift();
-        this.fiber = null; // Free up for GC
         return result;
     };
     return SimplePC_UnixDomain_Client;

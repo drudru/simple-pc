@@ -244,6 +244,7 @@ export class SimplePC_UnixDomain_Client  extends SimplePC_Base
     this.sock = sock;
     this.connected = false;
     this.in_box = [];
+    this.fiber = fibers.current;
     
     // sigh... connect may take a while...
     sock.on("connect", () => {
@@ -306,7 +307,6 @@ export class SimplePC_UnixDomain_Client  extends SimplePC_Base
     if (this.in_box[0] == 'timeout')
       throw new Error('timeout');
     let result = this.in_box.shift();
-    this.fiber = null;  // Free up for GC
     return result;
   }
 }
