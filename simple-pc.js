@@ -203,6 +203,15 @@ var SimplePC_UnixDomain_Client = (function (_super) {
             throw new Error('socket error: ' + e);
         });
     }
+    SimplePC_UnixDomain_Client.prototype.sleep = function (millis) {
+        var _this = this;
+        // should not need guards like server since
+        // we control the conversation
+        setTimeout(function () {
+            _this.fiber.run();
+        }, millis);
+        fibers.yield();
+    };
     SimplePC_UnixDomain_Client.prototype.send = function (timeout_ms, cmd, payload) {
         var _this = this;
         var pkt = this.create_rq_packet(cmd, payload);

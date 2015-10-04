@@ -272,6 +272,16 @@ export class SimplePC_UnixDomain_Client  extends SimplePC_Base
     });
   }
 
+  sleep(millis:number):void
+  {
+    // should not need guards like server since
+    // we control the conversation
+    setTimeout(() => {
+      this.fiber.run();
+    }, millis);
+    fibers.yield();
+  }
+
   send(timeout_ms:number, cmd:string, payload:any):any
   {
     let pkt = this.create_rq_packet(cmd, payload);
